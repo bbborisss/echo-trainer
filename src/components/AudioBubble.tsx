@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { drawBars } from '../audio/waveform'
 
 interface Props {
   src: string
@@ -6,6 +7,39 @@ interface Props {
   label?: string
   onEnded?: () => void
   autoPlay?: boolean
+  /** when provided, a waveform with playback progress replaces the plain bar */
+  peaks?: Float32Array | null
+}
+
+function WaveTrack({ peaks, progress, accent }: { peaks: Float32Array; progress: number; accent: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx) return
+    const dpr = window.devicePixelRatio || 1
+    const w = canvas.clientWidth
+    const h = canvas.clientHeight
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr)
+      canvas.height = Math.round(h * dpr)
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, w, h)
+    const rect = { x: 0, y: 0, width: w, height: h }
+    drawBars(ctx, peaks, rect, { color: accent ? 'rgba(255,255,255,0.35)' : '#cbd5e1' })
+    if (progress > 0) {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, w * progress, h)
+      ctx.clip()
+      drawBars(ctx, peaks, rect, { color: accent ? '#ffffff' : '#6366f1' })
+      ctx.restore()
+    }
+  }, [peaks, progress, accent])
+
+  return <canvas ref={canvasRef} className="h-8 w-full" />
 }
 
 function format(seconds: number): string {
@@ -15,7 +49,7 @@ function format(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-export function AudioBubble({ src, accent = false, label, onEnded, autoPlay = false }: Props) {
+export function AudioBubble({ src, accent = false, label, onEnded, autoPlay = false, peaks }: Props) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -84,14 +118,18 @@ export function AudioBubble({ src, accent = false, label, onEnded, autoPlay = fa
             {label}
           </div>
         )}
-        <div className={`h-1.5 rounded-full overflow-hidden ${accent ? 'bg-white/25' : 'bg-slate-200'}`}>
-          <div
-            className={`h-full rounded-full transition-[width] duration-200 ${
-              accent ? 'bg-white' : 'bg-indigo-500'
-            }`}
-            style={{ width: `${progress * 100}%` }}
-          />
-        </div>
+        {peaks ? (
+          <WaveTrack peaks={peaks} progress={progress} accent={accent} />
+        ) : (
+          <div className={`h-1.5 rounded-full overflow-hidden ${accent ? 'bg-white/25' : 'bg-slate-200'}`}>
+            <div
+              className={`h-full rounded-full transition-[width] duration-200 ${
+                accent ? 'bg-white' : 'bg-indigo-500'
+              }`}
+              style={{ width: `${progress * 100}%` }}
+            />
+          </div>
+        )}
       </div>
       <span className={`text-xs tabular-nums ${accent ? 'text-indigo-100' : 'text-slate-400'}`}>
         {format(duration)}

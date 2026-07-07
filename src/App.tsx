@@ -1,46 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CLIPS } from './clips'
-import type { AudioFeatures, ChatMessage, Clip } from './types'
-import { decodeToMono, extractFeatures, trimSilence } from './audio/dsp'
+import type { ChatMessage, Clip } from './types'
+import { decodeToMono, extractFeatures } from './audio/dsp'
+import { getRefData } from './audio/refdata'
 import { scoreAttempt } from './audio/score'
 import { useRecorder, type RecordingResult } from './audio/recorder'
 import { startTranscription, speechRecognitionSupported, type TranscriptSession } from './audio/speech'
-import { computePeaks, type GhostWave } from './audio/waveform'
+import type { GhostWave } from './audio/waveform'
 import { MAX_TRIES, bestToday, nextPlayableClip, recordAttempt, streak, triesLeft } from './game'
 import { AudioBubble } from './components/AudioBubble'
+import { ClipCard } from './components/ClipCard'
 import { LiveWave } from './components/LiveWave'
 import { RecordButton } from './components/RecordButton'
 import { ScoreCard } from './components/ScoreCard'
 
 type Phase = 'listening' | 'analyzing' | 'scored' | 'day-done'
-
-interface RefData {
-  features: AudioFeatures
-  wave: GhostWave
-}
-
-// Reference features are computed once per clip per session and cached.
-const refDataCache = new Map<string, Promise<RefData>>()
-
-function getRefData(clip: Clip): Promise<RefData> {
-  let cached = refDataCache.get(clip.id)
-  if (!cached) {
-    cached = fetch(clip.audio)
-      .then((r) => {
-        if (!r.ok) throw new Error(`Failed to load clip: ${r.status}`)
-        return r.arrayBuffer()
-      })
-      .then(decodeToMono)
-      .then((samples) => {
-        const features = extractFeatures(samples)
-        const speech = trimSilence(samples)
-        return { features, wave: { peaks: computePeaks(speech, 96), duration: features.duration } }
-      })
-    cached.catch(() => refDataCache.delete(clip.id))
-    refDataCache.set(clip.id, cached)
-  }
-  return cached
-}
 
 function coachReaction(score: number, attemptsLeft: number): string {
   if (score >= 90) return 'Incredible. That gave me chills. 🏆'
@@ -274,16 +248,7 @@ export default function App() {
               </div>
             )}
             {m.kind === 'clip' && m.clip && (
-              <div className="max-w-[85%] space-y-2 rounded-2xl rounded-bl-md border border-slate-200 bg-white p-3 shadow-sm">
-                <AudioBubble
-                  src={m.clip.audio}
-                  label={`${m.clip.speaker}, ${m.clip.year}`}
-                  onEnded={() => setClipHeard(true)}
-                />
-                <blockquote className="border-l-2 border-indigo-300 pl-3 font-display text-sm italic text-slate-600">
-                  “{m.clip.text}”
-                </blockquote>
-              </div>
+              <ClipCard clip={m.clip} onEnded={() => setClipHeard(true)} />
             )}
             {m.kind === 'recording' && m.audioUrl && (
               <AudioBubble src={m.audioUrl} accent label="Your take" />

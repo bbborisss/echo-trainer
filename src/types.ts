@@ -7,6 +7,8 @@ export interface Clip {
   text: string
   /** Path under /clips/ */
   audio: string
+  /** Public-domain portrait of the speaker, under /speakers/ */
+  image: string
   emoji: string
   context: string
 }
