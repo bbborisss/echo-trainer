@@ -1,22 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CLIPS } from './clips'
 import type { AudioFeatures, ChatMessage, Clip } from './types'
-import { decodeToMono, extractFeatures } from './audio/dsp'
+import { decodeToMono, extractFeatures, trimSilence } from './audio/dsp'
 import { scoreAttempt } from './audio/score'
 import { useRecorder, type RecordingResult } from './audio/recorder'
 import { startTranscription, speechRecognitionSupported, type TranscriptSession } from './audio/speech'
+import { computePeaks, type GhostWave } from './audio/waveform'
 import { MAX_TRIES, bestToday, nextPlayableClip, recordAttempt, streak, triesLeft } from './game'
 import { AudioBubble } from './components/AudioBubble'
+import { LiveWave } from './components/LiveWave'
 import { RecordButton } from './components/RecordButton'
 import { ScoreCard } from './components/ScoreCard'
 
 type Phase = 'listening' | 'analyzing' | 'scored' | 'day-done'
 
-// Reference features are computed once per clip per session and cached.
-const refFeatureCache = new Map<string, Promise<AudioFeatures>>()
+interface RefData {
+  features: AudioFeatures
+  wave: GhostWave
+}
 
-function getRefFeatures(clip: Clip): Promise<AudioFeatures> {
-  let cached = refFeatureCache.get(clip.id)
+// Reference features are computed once per clip per session and cached.
+const refDataCache = new Map<string, Promise<RefData>>()
+
+function getRefData(clip: Clip): Promise<RefData> {
+  let cached = refDataCache.get(clip.id)
   if (!cached) {
     cached = fetch(clip.audio)
       .then((r) => {
@@ -24,9 +31,13 @@ function getRefFeatures(clip: Clip): Promise<AudioFeatures> {
         return r.arrayBuffer()
       })
       .then(decodeToMono)
-      .then(extractFeatures)
-    cached.catch(() => refFeatureCache.delete(clip.id))
-    refFeatureCache.set(clip.id, cached)
+      .then((samples) => {
+        const features = extractFeatures(samples)
+        const speech = trimSilence(samples)
+        return { features, wave: { peaks: computePeaks(speech, 96), duration: features.duration } }
+      })
+    cached.catch(() => refDataCache.delete(clip.id))
+    refDataCache.set(clip.id, cached)
   }
   return cached
 }
@@ -54,6 +65,7 @@ export default function App() {
   const [clipHeard, setClipHeard] = useState(false)
   const [streakCount, setStreakCount] = useState(streak())
   const [coachTyping, setCoachTyping] = useState(false)
+  const [refWave, setRefWave] = useState<{ clipId: string; wave: GhostWave } | null>(null)
   const nextId = useRef(1)
   const transcriptRef = useRef<TranscriptSession | null>(null)
   const chatEndRef = useRef<HTMLDivElement | null>(null)
@@ -87,7 +99,10 @@ export default function App() {
       setClip(c)
       setClipHeard(false)
       setPhase('listening')
-      getRefFeatures(c).catch(() => {}) // warm the cache; errors resurface on scoring
+      // Warm the cache and grab the ghost wave; errors resurface on scoring
+      getRefData(c)
+        .then((d) => setRefWave({ clipId: c.id, wave: d.wave }))
+        .catch(() => {})
       const tries = triesLeft(c.id)
       coachSay([`${c.emoji} ${c.speaker} — “${c.title}” (${c.year}). ${c.context}`], () => {
         addMessage({ role: 'coach', kind: 'clip', clip: c })
@@ -159,14 +174,14 @@ export default function App() {
       transcriptRef.current = null
 
       try {
-        const [refFeatures, userBuffer, transcript] = await Promise.all([
-          getRefFeatures(clip),
+        const [refData, userBuffer, transcript] = await Promise.all([
+          getRefData(clip),
           result.blob.arrayBuffer(),
           transcriptPromise,
         ])
         const userFeatures = extractFeatures(await decodeToMono(userBuffer))
         const report = scoreAttempt({
-          ref: refFeatures,
+          ref: refData.features,
           user: userFeatures,
           targetText: clip.text,
           transcript,
@@ -297,6 +312,18 @@ export default function App() {
       <footer className="border-t border-slate-200 bg-white px-4 py-4">
         {phase === 'listening' && clip && (
           <div className="flex flex-col items-center gap-2">
+            {recorder.status === 'recording' && (
+              <div className="w-full max-w-md rounded-xl border border-slate-200 bg-slate-50 px-3 pt-2 pb-1">
+                <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide">
+                  <span className="text-indigo-500">You</span>
+                  <span className="text-slate-400">Shadow = original — chase its shape</span>
+                </div>
+                <LiveWave
+                  analyser={recorder.analyser}
+                  ghost={refWave?.clipId === clip.id ? refWave.wave : null}
+                />
+              </div>
+            )}
             <RecordButton
               recording={recorder.status === 'recording'}
               disabled={!clipHeard || recorder.status === 'requesting'}

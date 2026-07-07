@@ -25,6 +25,11 @@ export interface ScoreReport {
   tone: DimensionScore
   tips: string[]
   transcript: string | null
+  /**
+   * DTW-aligned pitch contours (semitones relative to each speaker's median),
+   * downsampled for drawing; null = unvoiced. Absent when nothing was heard.
+   */
+  melody: { ref: Array<number | null>; user: Array<number | null> } | null
 }
 
 export interface AudioFeatures {

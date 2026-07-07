@@ -13,8 +13,10 @@ export function useRecorder(onComplete: (result: RecordingResult) => void) {
   const [status, setStatus] = useState<RecorderStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
   const mediaRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
   const timerRef = useRef<number | null>(null)
   const startedAtRef = useRef(0)
 
@@ -26,6 +28,9 @@ export function useRecorder(onComplete: (result: RecordingResult) => void) {
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     mediaRef.current = null
+    audioCtxRef.current?.close().catch(() => {})
+    audioCtxRef.current = null
+    setAnalyser(null)
   }, [])
 
   useEffect(() => cleanup, [cleanup])
@@ -38,6 +43,16 @@ export function useRecorder(onComplete: (result: RecordingResult) => void) {
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
       streamRef.current = stream
+
+      // Tap the stream with an analyser so the UI can draw live levels.
+      const audioCtx = new AudioContext()
+      audioCtxRef.current = audioCtx
+      const tap = audioCtx.createAnalyser()
+      tap.fftSize = 2048
+      tap.smoothingTimeConstant = 0.4
+      audioCtx.createMediaStreamSource(stream).connect(tap)
+      setAnalyser(tap)
+
       const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((t) =>
         MediaRecorder.isTypeSupported(t),
       )
@@ -77,5 +92,5 @@ export function useRecorder(onComplete: (result: RecordingResult) => void) {
     }
   }, [])
 
-  return { status, error, elapsed, start, stop }
+  return { status, error, elapsed, analyser, start, stop }
 }

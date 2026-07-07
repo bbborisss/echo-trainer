@@ -16,6 +16,79 @@ function barColor(score: number): string {
   return 'bg-rose-500'
 }
 
+/** Split a contour with unvoiced (null) gaps into drawable polyline segments. */
+function toSegments(
+  contour: Array<number | null>,
+  x: (i: number) => number,
+  y: (v: number) => number,
+): string[] {
+  const segments: string[] = []
+  let current: string[] = []
+  contour.forEach((v, i) => {
+    if (v === null) {
+      if (current.length > 1) segments.push(current.join(' '))
+      current = []
+    } else {
+      current.push(`${x(i).toFixed(1)},${y(v).toFixed(1)}`)
+    }
+  })
+  if (current.length > 1) segments.push(current.join(' '))
+  return segments
+}
+
+function MelodyChart({ melody }: { melody: NonNullable<ScoreReport['melody']> }) {
+  const W = 320
+  const H = 72
+  const PAD = 6
+  const values = [...melody.ref, ...melody.user].filter((v): v is number => v !== null)
+  if (values.length < 16) return null
+  const lo = Math.min(...values)
+  const span = Math.max(3, Math.max(...values) - lo)
+  const x = (i: number) => (i / (melody.ref.length - 1)) * W
+  const y = (v: number) => PAD + (1 - (v - lo) / span) * (H - 2 * PAD)
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Melody map
+        </span>
+        <span className="flex items-center gap-3 text-[10px] text-slate-400">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-0.5 w-4 rounded bg-slate-400" /> original
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-0.5 w-4 rounded bg-indigo-500" /> you
+          </span>
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full rounded-lg bg-slate-50">
+        {toSegments(melody.ref, x, y).map((points, i) => (
+          <polyline
+            key={`r${i}`}
+            points={points}
+            fill="none"
+            stroke="#94a3b8"
+            strokeWidth="1.5"
+            strokeDasharray="4 3"
+            strokeLinecap="round"
+          />
+        ))}
+        {toSegments(melody.user, x, y).map((points, i) => (
+          <polyline
+            key={`u${i}`}
+            points={points}
+            fill="none"
+            stroke="#6366f1"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        ))}
+      </svg>
+    </div>
+  )
+}
+
 function Dimension({ name, icon, dim }: { name: string; icon: string; dim: DimensionScore }) {
   return (
     <div>
@@ -84,6 +157,8 @@ export function ScoreCard({
         <Dimension name="Rhythm" icon="🥁" dim={report.rhythm} />
         <Dimension name="Tone" icon="🎙️" dim={report.tone} />
       </div>
+
+      {report.melody && <MelodyChart melody={report.melody} />}
 
       {report.transcript !== null && report.transcript.length > 0 && (
         <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-xs italic text-slate-500">

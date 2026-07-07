@@ -100,6 +100,7 @@ export function scoreAttempt(input: ScoreInput): ScoreReport {
   }
   const voicedOverlap = refPitch.length / alignment.path.length
   const pitchCorr = correlation(refPitch, userPitch)
+  const melody = melodyContours(ref, user, alignment.path)
   let intonationScore = corrToScore(pitchCorr)
   // Penalize when too little of the take was actually voiced speech
   if (voicedOverlap < 0.25) intonationScore = Math.round(intonationScore * (0.5 + 2 * voicedOverlap))
@@ -238,7 +239,45 @@ export function scoreAttempt(input: ScoreInput): ScoreReport {
     tips.push('Outstanding mimicry. Try the next speech — or chase a perfect 100.')
   }
 
-  return { overall, pronunciation, intonation, rhythm, tone, tips, transcript }
+  return { overall, pronunciation, intonation, rhythm, tone, tips, transcript, melody }
+}
+
+const MELODY_POINTS = 96
+
+/**
+ * Both pitch contours resampled onto a common time axis (the DTW path), so
+ * the scorecard can draw "your melody vs. theirs" moment by moment.
+ */
+function melodyContours(
+  ref: AudioFeatures,
+  user: AudioFeatures,
+  path: Array<[number, number]>,
+): ScoreReport['melody'] {
+  const refOut: Array<number | null> = []
+  const userOut: Array<number | null> = []
+  const L = path.length
+  for (let b = 0; b < MELODY_POINTS; b++) {
+    const start = Math.floor((b * L) / MELODY_POINTS)
+    const end = Math.max(start + 1, Math.floor(((b + 1) * L) / MELODY_POINTS))
+    let rSum = 0
+    let rN = 0
+    let uSum = 0
+    let uN = 0
+    for (let k = start; k < end && k < L; k++) {
+      const [i, j] = path[k]
+      if (!Number.isNaN(ref.pitch[i])) {
+        rSum += ref.pitch[i]
+        rN++
+      }
+      if (!Number.isNaN(user.pitch[j])) {
+        uSum += user.pitch[j]
+        uN++
+      }
+    }
+    refOut.push(rN > 0 ? rSum / rN : null)
+    userOut.push(uN > 0 ? uSum / uN : null)
+  }
+  return { ref: refOut, user: userOut }
 }
 
 function emptyAttemptReport(transcript: string | null): ScoreReport {
@@ -251,5 +290,6 @@ function emptyAttemptReport(transcript: string | null): ScoreReport {
     tone: zero,
     tips: ['Check your microphone and speak up — we barely caught anything that time.'],
     transcript,
+    melody: null,
   }
 }
