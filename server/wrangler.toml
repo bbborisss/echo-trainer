@@ -1,0 +1,19 @@
+name = "echo-chamber-api"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Non-secret config. Secrets are set via `wrangler secret put`:
+#   wrangler secret put COACH_API_KEY   (DeepSeek or other LLM provider key)
+#   wrangler secret put ASR_API_KEY     (Groq key)
+[vars]
+# Which wire format the coach provider speaks: "openai" (DeepSeek, Groq,
+# OpenRouter, Ollama, LM Studio, ...) or "anthropic".
+COACH_FORMAT = "openai"
+COACH_BASE_URL = "https://api.deepseek.com"
+COACH_MODEL = "deepseek-chat"
+
+ASR_BASE_URL = "https://api.groq.com/openai/v1"
+ASR_MODEL = "whisper-large-v3-turbo"
+
+# Comma-separated list of allowed browser origins, or "*" while developing.
+ALLOWED_ORIGINS = "http://localhost:5173"
