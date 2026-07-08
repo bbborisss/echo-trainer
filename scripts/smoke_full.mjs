@@ -1,6 +1,6 @@
-// Full-loop smoke test: play the clip, record with a fake mic, and verify a
-// scorecard comes back. Uses Chromium fake-media flags so getUserMedia yields
-// a synthetic audio stream without prompting.
+// Full-loop smoke test: enter the daily game, play the clip, record with a
+// fake mic, and verify the results panel comes back. Uses Chromium fake-media
+// flags so getUserMedia yields a synthetic audio stream without prompting.
 import { chromium } from 'playwright'
 
 const errors = []
@@ -21,7 +21,11 @@ page.on('console', (msg) => {
 page.on('pageerror', (err) => errors.push(String(err)))
 
 await page.goto('http://localhost:5173', { waitUntil: 'domcontentloaded' })
-await page.waitForSelector('button[aria-label="Play"]', { timeout: 20000 })
+
+// Intro → daily game
+await page.waitForSelector('text=Speech of the Day', { timeout: 20000 })
+await page.click('text=Speech of the Day')
+await page.waitForSelector('button[aria-label="Play"]', { timeout: 10000 })
 
 // Play the reference clip all the way through to unlock the mic
 await page.click('button[aria-label="Play"]')
@@ -38,9 +42,9 @@ console.log('recording…')
 await page.waitForTimeout(4000)
 await page.click('button[aria-label="Stop recording"]')
 
-// Scorecard should appear after analysis
+// Results panel should appear after analysis
 await page.waitForSelector('text=Coach’s notes', { timeout: 30000 })
-console.log('OK scorecard rendered')
+console.log('OK results rendered')
 
 // Tries counter should now show 2 left
 await page.waitForSelector('text=Try again (2 left)', { timeout: 15000 })

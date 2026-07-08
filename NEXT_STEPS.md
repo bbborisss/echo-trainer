@@ -20,16 +20,24 @@ on another machine.
 Goal: download your take as audio, and a share-card / share-video suitable for
 IG/TikTok (vertical, waveform + score baked in).
 
-- `src/audio/wav.ts` — done, not yet wired up. `blobToWav()` decodes the
-  recorded webm/opus blob and re-encodes as 16-bit PCM WAV (plays everywhere,
-  unlike webm). `encodeWav()` is the reusable low-level piece.
+- `src/audio/wav.ts` — done. `blobToWav()` decodes the recorded webm/opus blob
+  and re-encodes as 16-bit PCM WAV (plays everywhere, unlike webm).
+  `encodeWav()` is the reusable low-level piece.
+- **Done (items 1 & 2):**
+  1. ✅ "Download take" button on the scorecard (`ScoreCard` → `ExportRow`)
+     calls `blobToWav(blob)` and saves via `saveBlob()` (`src/audio/download.ts`,
+     `URL.createObjectURL` + temporary `<a download>`).
+  2. ✅ Share-card PNG generator (`src/audio/shareCard.ts`, `renderShareCard()`):
+     1080×1920 canvas composite of portrait + quote + score ring + per-dimension
+     chips + original/you waveforms (reuses `drawBars()`). "Share card" button
+     uses the Web Share API with a file when available (mobile → straight to
+     IG/TikTok), else falls back to a plain PNG download.
+     - The scorecard message now carries `blob`, `refPeaks`, `userPeaks`, `clip`
+       (see `ChatMessage` in `types.ts`; wired in `App.handleRecordingComplete`).
+     - E2E coverage: `scripts/smoke_export.mjs` drives record→score, clicks both
+       buttons, and asserts the WAV (RIFF/WAVE, 16-bit) and PNG (signature,
+       1080×1920) bytes. Run with the dev server up: `node scripts/smoke_export.mjs`.
 - **Still needed:**
-  1. Wire a "Download" button into the scorecard or the user's `AudioBubble`
-     that calls `blobToWav(result.blob)` and triggers a save (`URL.createObjectURL`
-     + temporary `<a download>`).
-  2. Share-card PNG generator: canvas composite of speaker portrait + reference
-     waveform + user waveform + score ring, sized for IG/TikTok (1080×1920).
-     Reuse `drawBars()` from `waveform.ts` for both waveforms.
   3. Share-video export: same composite, animated (waveform draws in sync with
      playback) + the user's actual audio track, encoded via
      `canvas.captureStream()` + `MediaRecorder` → WebM, or ffmpeg.wasm if a
@@ -39,28 +47,76 @@ IG/TikTok (vertical, waveform + score baked in).
   4. Speaker *video* behind the waveform (rather than a static photo) is an
      explicit stretch goal — only pursue after the above ships.
 
-## Not started — Stage 2: LLM coach backend
+## Done — Stage 1d: game-feel review round (2026-07-07)
 
-User wants a real backend (not another client-side key), producing a **one-shot
-coach note** (not a chat) after each scored attempt, cheap to run, pluggable
-across providers (DeepSeek, self-hosted, etc.).
+Product review against the "Wordle viral loop" bar led to three shipped changes:
 
-Suggested cheap approach:
-- Small serverless proxy (Cloudflare Worker or Vercel Edge Function — both have
-  generous free tiers and no idle cost) that holds the API key server-side and
-  forwards a single chat-completion request.
-- Speak the **OpenAI chat-completions wire format** as the lingua franca — it
-  covers DeepSeek, Ollama/self-hosted, OpenRouter, and LM Studio with one
-  adapter; add a thin Anthropic-format adapter alongside it.
-- Request body: full `ScoreReport` (dimension scores, transcript vs. target,
-  tempo ratio, etc.) + speaker/clip context; response: one coach note string.
-- Client calls the proxy instead of an LLM directly; existing rule-based coach
-  in `score.ts` stays as the zero-config/offline/error fallback.
-- Config (which provider/model the proxy uses) lives in the proxy's env vars,
-  not in client localStorage — keeps this a real backend, not a key-in-browser
-  hack.
-- Note for self-hosted Ollama as a backend target: needs `OLLAMA_ORIGINS` set
-  to allow the proxy to reach it.
+- **Dark theme**: zinc-950/900 surfaces with orange accents replace the white
+  slate/indigo look, across all components and the share card (orange is the
+  brand color — matches the 🔥 streak).
+- **Waveform milestones**: `findMilestones()` in `waveform.ts` picks the ghost
+  envelope's prominent peaks; `LiveWave` draws them as ◆ targets that light up
+  (with a pop + tally) when the player's live level hits them on time.
+  Tunables: `HIT_WINDOW` (±0.22 s) and `HIT_LEVEL` (50 % of the ghost peak).
+- **Speech of the Day**: `dayNumber()` / `dailyClip()` in `game.ts`
+  (epoch 2026-07-01 = #1, local-date based, deterministic rotation). Everyone
+  gets the same clip first — scores comparable between friends; remaining clips
+  are framed as practice rounds. Puzzle number shown in the header.
+
+Reviewed-but-deferred backlog (in rough priority order):
+
+1. **Emoji text share** — Wordle-style copy-to-clipboard result
+   (`Echo Chamber #N 🎙️ / 🗣️🟩 🎵🟨 … → 78 / 🔥 streak`). The low-friction
+   chat-share loop; pairs with the day number that now exists.
+2. **Faster returning-player boot** — skip the staged coach greeting
+   (~4 s of typing theatre in `App.tsx` boot effect) after the first visit.
+3. **Score juice** — confetti / ring animation on 90+ and new-best scorecards.
+
+## Done — Stage 1e: game-UI redo (2026-07-07)
+
+Chat interface replaced with a screen-based game flow:
+
+- **Screens**: `IntroScreen` (two doors: Speech of the Day vs Practice) →
+  `PracticeScreen` (clip grid, daily clip hidden so it can't burn takes) →
+  `GameScreen` (portrait hero, "The occasion" context, quote, listen, record,
+  results). `App.tsx` is now a tiny router; `ChatMessage`/`LiveWave`/`ClipCard`
+  removed.
+- **Rules**: daily keeps 3 takes; practice is unlimited; the 🔥 streak is earned
+  only by playing the daily (`recordAttempt(..., {daily})`). LLM coaching is
+  allowed for the first `MAX_COACHED_TRIES` (3) attempts per clip per day
+  (`coachedTriesLeft`).
+- **ScrollingWave** (`src/components/ScrollingWave.tsx`): note-highway live
+  view — fixed 140 px/s scale so the wave starts off-screen and scrolls under
+  a fixed playhead (30% from left), milestone ◆s ride along, gradient edge
+  fades. Replaces the squeeze-to-fit `LiveWave`.
+- Smoke tests rewritten for the new flow (`smoke.mjs`, `smoke_full.mjs`,
+  `smoke_export.mjs`, `probe_smoke.mjs` — probes now cover daily lock,
+  lock persistence, unlimited practice, daily hidden from practice).
+
+## Done — Stage 2: backend (LLM coach + server ASR) (2026-07-07)
+
+Cloudflare Worker in `server/` (deploy: see `server/README.md`; not yet
+deployed — needs `wrangler login` + DeepSeek/Groq keys as secrets):
+
+- `POST /coach` — one-shot coach note. Speaks OpenAI chat-completions format
+  (default: DeepSeek `deepseek-chat`) with an Anthropic `/v1/messages` adapter
+  via `COACH_FORMAT=anthropic` (default model `claude-haiku-4-5`). Provider is
+  env config in `wrangler.toml`, key is a Worker secret.
+- `POST /transcribe` — raw audio bytes → Whisper transcript via any
+  OpenAI-compatible `/audio/transcriptions` endpoint (default: Groq
+  `whisper-large-v3-turbo`). Fixes Safari/Firefox having no pronunciation
+  scoring; `language=en` pinned.
+- **Client** (`src/api.ts`): `VITE_API_BASE` (`.env.local`, see `.env.example`)
+  points at the Worker; unset = fully offline. Server transcript is preferred,
+  live browser SR is the fallback (`serverTranscript ?? browserTranscript` in
+  `GameScreen`); rule-based tips always render, the LLM note appears above them
+  in the scorecard when available. All calls are best-effort with timeouts.
+- Verified end-to-end against `scripts/mock_backend.mjs` (run it + start vite
+  with `VITE_API_BASE=http://localhost:8787` to test without keys); offline
+  fallback covered by the standard smoke suite.
+- **Still needed:** actually deploy the Worker, then a smoke pass against the
+  real providers; consider word-timestamps from Whisper (`verbose_json`) for
+  sharper per-word feedback later.
 
 ## Not started — Stage 3: i18n
 

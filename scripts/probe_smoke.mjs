@@ -1,8 +1,10 @@
-// Probe script: edge cases around the play→record→score loop.
+// Probe script: edge cases around the daily/practice game rules.
 // 1. Mic must be gated before the clip is heard.
-// 2. A ~300ms recording must be handled gracefully (scorecard or coach apology, no crash).
-// 3. Exhausting all 3 tries must lock the clip and advance to the next speech.
-// 4. Reloading must persist the lock (locked clip skipped on fresh load).
+// 2. A ~300ms recording must be handled gracefully (results or apology, no crash).
+// 3. Exhausting the daily's 3 takes must lock it ("Keep practicing", no retry).
+// 4. Reloading must persist the lock (intro shows "Done for today").
+// 5. Practice must be unlimited (retry offered with no counter) and must not
+//    list today's daily clip.
 import { chromium } from 'playwright'
 
 const errors = []
@@ -23,10 +25,14 @@ page.on('console', (msg) => {
 page.on('pageerror', (err) => errors.push(String(err)))
 
 await page.goto('http://localhost:5173', { waitUntil: 'domcontentloaded' })
-await page.waitForSelector('button[aria-label="Play"]', { timeout: 20000 })
 
-const firstQuote = (await page.textContent('blockquote')).trim()
-console.log('first clip quote:', firstQuote.slice(0, 50))
+// Intro → daily game
+await page.waitForSelector('text=Speech of the Day', { timeout: 20000 })
+await page.click('text=Speech of the Day')
+await page.waitForSelector('button[aria-label="Play"]', { timeout: 10000 })
+
+const dailySpeaker = (await page.textContent('main img[alt^="Portrait"] + div div')).trim()
+console.log('daily speaker:', dailySpeaker)
 
 // PROBE 1: mic gated before the clip is heard
 const recBtn = page.locator('button[aria-label="Start recording"]')
@@ -43,55 +49,70 @@ await page.waitForSelector('button[aria-label="Stop recording"]', { timeout: 100
 await page.waitForTimeout(300)
 await page.click('button[aria-label="Stop recording"]')
 const outcome = await Promise.race([
-  page.waitForSelector('text=Coach’s notes', { timeout: 30000 }).then(() => 'scorecard'),
-  page.waitForSelector('text=couldn’t analyze', { timeout: 30000 }).then(() => 'apology'),
+  page.waitForSelector('text=Coach’s notes', { timeout: 30000 }).then(() => 'results'),
+  page.waitForSelector('text=Couldn’t analyze', { timeout: 30000 }).then(() => 'apology'),
 ])
 console.log(`PROBE2 OK: 300ms take handled gracefully → ${outcome}`)
 
-// Helper: do one full retry+record cycle
-async function takeAnother(ms) {
-  await page.click('text=🎤 Try again')
+// Helper: record one take (assumes we're on the listen phase, mic unlocked)
+async function recordTake(ms) {
   await page.waitForSelector('button[aria-label="Start recording"]:not([disabled])', { timeout: 20000 })
   await page.click('button[aria-label="Start recording"]')
   await page.waitForSelector('button[aria-label="Stop recording"]', { timeout: 10000 })
   await page.waitForTimeout(ms)
   await page.click('button[aria-label="Stop recording"]')
-}
-
-// PROBE 3: burn the remaining tries (the 300ms take counted as #1 only if it scored)
-if (outcome === 'apology') {
-  // didn't count as an attempt; need a real first take
-  await page.waitForSelector('button[aria-label="Start recording"]:not([disabled])', { timeout: 20000 })
-  await page.click('button[aria-label="Start recording"]')
-  await page.waitForSelector('button[aria-label="Stop recording"]', { timeout: 10000 })
-  await page.waitForTimeout(3000)
-  await page.click('button[aria-label="Stop recording"]')
   await page.waitForSelector('text=Coach’s notes', { timeout: 30000 })
 }
-await page.waitForSelector('text=🎤 Try again (2 left)', { timeout: 20000 })
-await takeAnother(3000)
-await page.waitForSelector('text=🎤 Try again (1 left)', { timeout: 30000 })
-await takeAnother(3000)
-await page.waitForSelector('text=locks until tomorrow', { timeout: 30000 })
-console.log('PROBE3 OK: third take locked the clip')
 
-// Next speech should auto-appear (a new clip bubble with a different quote)
-await page.waitForFunction(
-  (q) => {
-    const quotes = [...document.querySelectorAll('blockquote')].map((b) => b.textContent.trim())
-    return quotes.some((t) => t !== q)
-  },
-  firstQuote,
-  { timeout: 30000 },
+// PROBE 3: burn the remaining daily takes (the 300ms take counted only if it scored)
+if (outcome === 'apology') {
+  await recordTake(3000)
+}
+await page.waitForSelector('text=Try again (2 left)', { timeout: 20000 })
+await page.click('text=Try again (2 left)')
+await recordTake(3000)
+await page.waitForSelector('text=Try again (1 left)', { timeout: 20000 })
+await page.click('text=Try again (1 left)')
+await recordTake(3000)
+await page.waitForSelector('text=Keep practicing', { timeout: 20000 })
+await page.waitForSelector('text=last take on today’s speech', { timeout: 5000 })
+console.log('PROBE3 OK: third take locked the daily (no retry, practice CTA)')
+
+// PROBE 4: reload — intro must show the daily as done
+await page.goto('http://localhost:5173', { waitUntil: 'domcontentloaded' })
+await page.waitForSelector('text=Done for today', { timeout: 20000 })
+const dailyBtnDisabled = await page.$eval(
+  'button:has-text("Speech of the Day")',
+  (el) => el.disabled,
 )
-console.log('PROBE3 OK: auto-advanced to a different speech')
+console.log(
+  dailyBtnDisabled
+    ? 'PROBE4 OK: reload kept the daily locked'
+    : 'PROBE4 FAIL: daily playable again after reload',
+)
 
-// PROBE 4: reload — locked clip must be skipped
-await page.reload({ waitUntil: 'domcontentloaded' })
-await page.waitForSelector('blockquote', { timeout: 20000 })
-const reloadQuote = (await page.textContent('blockquote')).trim()
-if (reloadQuote !== firstQuote) console.log('PROBE4 OK: locked clip skipped after reload →', reloadQuote.slice(0, 50))
-else console.log('PROBE4 FAIL: reload served the locked clip again')
+// PROBE 5: practice is unlimited and hides the daily clip
+await page.click('text=🎯 Practice')
+await page.waitForSelector('img[alt^="Portrait"]', { timeout: 10000 })
+const practiceSpeakers = await page.$$eval('main img[alt^="Portrait"]', (imgs) =>
+  imgs.map((i) => i.alt.replace('Portrait of ', '')),
+)
+if (practiceSpeakers.includes(dailySpeaker)) {
+  console.log('PROBE5 FAIL: daily clip listed in practice:', practiceSpeakers.join(', '))
+} else {
+  console.log('PROBE5 OK: daily clip hidden from practice grid')
+}
+await page.click('main button') // first practice card
+await page.waitForSelector('text=unlimited takes', { timeout: 10000 })
+await page.click('button[aria-label="Play"]')
+await page.waitForSelector('button[aria-label="Start recording"]:not([disabled])', { timeout: 30000 })
+await recordTake(2000)
+const retryText = (await page.textContent('button:has-text("Try again")')).trim()
+if (/\(\d+ left\)/.test(retryText)) {
+  console.log('PROBE5 FAIL: practice retry shows a counter:', retryText)
+} else {
+  console.log('PROBE5 OK: practice retry is unlimited (no counter)')
+}
 
 await page.screenshot({ path: 'scripts/probe_smoke.png', fullPage: true })
 console.log('screenshot saved to scripts/probe_smoke.png')

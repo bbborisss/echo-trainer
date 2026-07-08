@@ -66,3 +66,27 @@ export interface GhostWave {
   /** seconds of actual speech (silence-trimmed) */
   duration: number
 }
+
+/**
+ * Pick up to `count` prominent local maxima of an envelope as gameplay
+ * "milestones" — the loudness peaks the player should hit. Peaks are kept at
+ * least `minGapFrac` of the envelope apart so they don't cluster in one burst.
+ * Returns bucket indices in ascending order.
+ */
+export function findMilestones(peaks: ArrayLike<number>, count = 5, minGapFrac = 0.08): number[] {
+  const n = peaks.length
+  if (n < 3) return []
+  const minGap = Math.max(1, Math.round(n * minGapFrac))
+  // Local maxima (plateau-tolerant: strictly greater than one side, >= other)
+  const candidates: number[] = []
+  for (let i = 1; i < n - 1; i++) {
+    if (peaks[i] >= peaks[i - 1] && peaks[i] > peaks[i + 1]) candidates.push(i)
+  }
+  candidates.sort((a, b) => peaks[b] - peaks[a])
+  const chosen: number[] = []
+  for (const idx of candidates) {
+    if (chosen.length >= count) break
+    if (chosen.every((c) => Math.abs(c - idx) >= minGap)) chosen.push(idx)
+  }
+  return chosen.sort((a, b) => a - b)
+}

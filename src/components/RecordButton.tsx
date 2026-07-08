@@ -18,13 +18,13 @@ export function RecordButton({ recording, disabled, elapsed, onStart, onStop }: 
           disabled={disabled}
           aria-label={recording ? 'Stop recording' : 'Start recording'}
           className={`relative flex h-16 w-16 items-center justify-center rounded-full text-2xl shadow-lg transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
-            recording ? 'bg-rose-500 hover:bg-rose-400 text-white' : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+            recording ? 'bg-rose-500 hover:bg-rose-400 text-white' : 'bg-orange-600 hover:bg-orange-500 text-white'
           }`}
         >
           {recording ? '■' : '🎤'}
         </button>
       </div>
-      <span className="text-xs font-medium text-slate-500 tabular-nums">
+      <span className="text-xs font-medium text-zinc-500 tabular-nums">
         {recording ? `${(elapsed / 1000).toFixed(1)}s — tap to finish` : 'Tap to record your take'}
       </span>
     </div>

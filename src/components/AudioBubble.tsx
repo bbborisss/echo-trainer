@@ -28,13 +28,13 @@ function WaveTrack({ peaks, progress, accent }: { peaks: Float32Array; progress:
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
     const rect = { x: 0, y: 0, width: w, height: h }
-    drawBars(ctx, peaks, rect, { color: accent ? 'rgba(255,255,255,0.35)' : '#cbd5e1' })
+    drawBars(ctx, peaks, rect, { color: accent ? 'rgba(255,255,255,0.35)' : '#3f3f46' })
     if (progress > 0) {
       ctx.save()
       ctx.beginPath()
       ctx.rect(0, 0, w * progress, h)
       ctx.clip()
-      drawBars(ctx, peaks, rect, { color: accent ? '#ffffff' : '#6366f1' })
+      drawBars(ctx, peaks, rect, { color: accent ? '#ffffff' : '#f97316' })
       ctx.restore()
     }
   }, [peaks, progress, accent])
@@ -98,7 +98,7 @@ export function AudioBubble({ src, accent = false, label, onEnded, autoPlay = fa
   return (
     <div
       className={`flex items-center gap-3 rounded-2xl px-4 py-3 min-w-[230px] ${
-        accent ? 'bg-indigo-600 text-white' : 'bg-white text-slate-800 border border-slate-200'
+        accent ? 'bg-orange-600 text-white' : 'bg-zinc-900 text-zinc-100 border border-zinc-800'
       }`}
     >
       <button
@@ -107,31 +107,31 @@ export function AudioBubble({ src, accent = false, label, onEnded, autoPlay = fa
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg transition ${
           accent
             ? 'bg-white/20 hover:bg-white/30 text-white'
-            : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+            : 'bg-orange-600 hover:bg-orange-500 text-white'
         }`}
       >
         {playing ? '❚❚' : '▶'}
       </button>
       <div className="flex-1">
         {label && (
-          <div className={`text-xs font-semibold mb-1 ${accent ? 'text-indigo-100' : 'text-slate-500'}`}>
+          <div className={`text-xs font-semibold mb-1 ${accent ? 'text-orange-100' : 'text-zinc-400'}`}>
             {label}
           </div>
         )}
         {peaks ? (
           <WaveTrack peaks={peaks} progress={progress} accent={accent} />
         ) : (
-          <div className={`h-1.5 rounded-full overflow-hidden ${accent ? 'bg-white/25' : 'bg-slate-200'}`}>
+          <div className={`h-1.5 rounded-full overflow-hidden ${accent ? 'bg-white/25' : 'bg-zinc-700'}`}>
             <div
               className={`h-full rounded-full transition-[width] duration-200 ${
-                accent ? 'bg-white' : 'bg-indigo-500'
+                accent ? 'bg-white' : 'bg-orange-500'
               }`}
               style={{ width: `${progress * 100}%` }}
             />
           </div>
         )}
       </div>
-      <span className={`text-xs tabular-nums ${accent ? 'text-indigo-100' : 'text-slate-400'}`}>
+      <span className={`text-xs tabular-nums ${accent ? 'text-orange-100' : 'text-zinc-500'}`}>
         {format(duration)}
       </span>
     </div>

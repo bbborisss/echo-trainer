@@ -1,5 +1,5 @@
-// UI smoke test: greeting renders, clip bubble with audio player appears,
-// mic gate works, no console errors. Drives system Edge headlessly.
+// UI smoke test: intro screen renders, daily game screen shows hero/occasion/
+// quote/audio player, mic gate works, no console errors. Drives Edge headlessly.
 import { chromium } from 'playwright'
 
 const errors = []
@@ -13,15 +13,20 @@ page.on('pageerror', (err) => errors.push(String(err)))
 
 await page.goto('http://localhost:5173', { waitUntil: 'domcontentloaded' })
 
-// Coach greeting (typed out with delays)
-await page.waitForSelector('text=Welcome to Echo Chamber', { timeout: 20000 })
-console.log('OK greeting rendered')
+// Intro screen: title + the two doors
+await page.waitForSelector('text=Echo Chamber', { timeout: 20000 })
+await page.waitForSelector('text=Speech of the Day', { timeout: 5000 })
+await page.waitForSelector('text=Practice', { timeout: 5000 })
+console.log('OK intro screen rendered with daily + practice doors')
+await page.screenshot({ path: 'scripts/smoke_intro.png', fullPage: true })
 
-// First clip bubble: speaker label + quoted phrase + play button
-await page.waitForSelector('text=Neil Armstrong, 1969', { timeout: 20000 })
-await page.waitForSelector('text=one small step', { timeout: 5000 })
+// Enter the daily game
+await page.click('text=Speech of the Day')
+await page.waitForSelector('text=The occasion', { timeout: 10000 })
+await page.waitForSelector('blockquote', { timeout: 5000 })
 await page.waitForSelector('button[aria-label="Play"]', { timeout: 5000 })
-console.log('OK clip bubble with audio player rendered')
+await page.waitForSelector('img[alt^="Portrait"]', { timeout: 5000 })
+console.log('OK game screen: portrait, occasion, quote, audio player')
 
 // Mic should be locked before the clip has been heard
 await page.waitForSelector('text=Play the clip all the way through', { timeout: 10000 })
@@ -31,9 +36,6 @@ const micDisabled = await page.$eval(
 )
 console.log(micDisabled ? 'OK mic gated until clip heard' : 'FAIL mic should be disabled')
 
-// Header chrome
-await page.waitForSelector('text=Speak like history', { timeout: 5000 })
-
 // Reference clip should be fetchable
 const clipStatus = await page.evaluate(() =>
   fetch('/clips/armstrong-step.mp3').then((r) => r.status),
@@ -41,7 +43,7 @@ const clipStatus = await page.evaluate(() =>
 console.log(clipStatus === 200 ? 'OK clip audio served' : `FAIL clip fetch ${clipStatus}`)
 
 await page.screenshot({ path: 'scripts/smoke.png', fullPage: true })
-console.log('screenshot saved to scripts/smoke.png')
+console.log('screenshots saved to scripts/smoke_intro.png + scripts/smoke.png')
 
 if (errors.length) {
   console.log('CONSOLE ERRORS:')

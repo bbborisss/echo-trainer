@@ -51,16 +51,3 @@ export interface AudioFeatures {
   energyDynamics: number
 }
 
-export type ChatRole = 'coach' | 'user'
-
-export interface ChatMessage {
-  id: number
-  role: ChatRole
-  kind: 'text' | 'clip' | 'recording' | 'scorecard' | 'lock'
-  text?: string
-  clip?: Clip
-  audioUrl?: string
-  report?: ScoreReport
-  attemptNumber?: number
-  newBest?: boolean
-}

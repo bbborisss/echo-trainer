@@ -1,4 +1,7 @@
+/** Takes allowed on the daily clip. Practice clips are unlimited. */
 export const MAX_TRIES = 3
+/** LLM coach notes allowed per clip per day; past this the rule-based coach answers. */
+export const MAX_COACHED_TRIES = 3
 
 interface ClipDay {
   attempts: number
@@ -48,8 +51,14 @@ export function attemptsToday(clipId: string): number {
   return load().days[todayKey()]?.[clipId]?.attempts ?? 0
 }
 
+/** Takes left on the DAILY clip (practice clips are unlimited). */
 export function triesLeft(clipId: string): number {
   return Math.max(0, MAX_TRIES - attemptsToday(clipId))
+}
+
+/** Whether the next attempt on this clip still earns an LLM coach note today. */
+export function coachedTriesLeft(clipId: string): number {
+  return Math.max(0, MAX_COACHED_TRIES - attemptsToday(clipId))
 }
 
 export function bestToday(clipId: string): number {
@@ -69,7 +78,11 @@ export function streak(): number {
   return 0
 }
 
-export function recordAttempt(clipId: string, score: number): { attempts: number; newBest: boolean } {
+export function recordAttempt(
+  clipId: string,
+  score: number,
+  opts: { daily: boolean },
+): { attempts: number; newBest: boolean } {
   const s = load()
   const today = todayKey()
   s.days[today] ??= {}
@@ -82,7 +95,8 @@ export function recordAttempt(clipId: string, score: number): { attempts: number
   const newBest = score > prevBest
   if (newBest) s.bestEver[clipId] = score
 
-  if (s.lastStreakDate !== today) {
+  // The streak is the daily ritual: only playing the Speech of the Day extends it.
+  if (opts.daily && s.lastStreakDate !== today) {
     s.streakCount = s.lastStreakDate === yesterdayKey() ? s.streakCount + 1 : 1
     s.lastStreakDate = today
   }
@@ -91,12 +105,21 @@ export function recordAttempt(clipId: string, score: number): { attempts: number
   return { attempts: rec.attempts, newBest }
 }
 
-/** First clip (by manifest order) that still has tries left today, else null. */
-export function nextPlayableClip<T extends { id: string }>(clips: T[], afterId?: string): T | null {
-  const startIdx = afterId ? clips.findIndex((c) => c.id === afterId) + 1 : 0
-  for (let k = 0; k < clips.length; k++) {
-    const clip = clips[(startIdx + k) % clips.length]
-    if (triesLeft(clip.id) > 0) return clip
-  }
-  return null
+// ---- Speech of the Day -----------------------------------------------------
+// Everyone gets the same clip on the same (local) date, so scores are
+// comparable between friends — the Wordle anchor. Day numbers are 1-based.
+
+const DAY_ONE = new Date(2026, 6, 1) // 2026-07-01 = Echo Chamber #1
+
+/** Today's 1-based puzzle number (local time), for "Echo Chamber #N" shares. */
+export function dayNumber(): number {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  // Round, not floor: DST shifts make some day-gaps 23 or 25 hours.
+  return Math.round((today.getTime() - DAY_ONE.getTime()) / 86_400_000) + 1
+}
+
+/** The shared daily clip: deterministic rotation through the manifest. */
+export function dailyClip<T>(clips: T[]): T {
+  return clips[(dayNumber() - 1) % clips.length]
 }
