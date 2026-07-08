@@ -1,5 +1,25 @@
 # Roadmap / handoff notes
 
+## Done — Stage 1f: library expansion + tomorrow teaser (2026-07-08)
+
+- **Four new clips** (see provenance in `src/clips.ts`): Eleanor Roosevelt
+  (Human Rights Day, ~30s), Frances Perkins (Social Security, ~16s),
+  FDR Pearl Harbor "Infamy" (~28s), Eisenhower military-industrial complex
+  (~26s). Longer snippets than the original five; `MAX_RECORDING_MS` bumped
+  30s → 45s to fit. Clip texts verified against audio via whisper.cpp
+  (`brew install whisper-cpp` + `tools/ggml-base.en.bin`); pipeline: download
+  from archive.org → cut windows with ffmpeg → base.en transcribe → adjust
+  boundaries → encode 48kHz mono 96kbps mp3 with fades → re-transcribe the
+  encoded clip as QA. (Watch for Whisper hallucinating "Thank you" on faded
+  tails — transcribe the tail in isolation to check.)
+- **Sourcing leads that didn't pan out** (for next expansion): Barbara Jordan
+  1974 impeachment statement — only found on americanrhetoric.com (they claim
+  rights on their encodes; look for the NARA/pool recording); Shirley Chisholm
+  — no House floor audio exists pre-1978; Sally Ride / NASA women — air-to-
+  ground audio is §105-clean, worth mining NASA collections on archive.org.
+- **Tomorrow teaser**: intro screen shows next day's speaker (portrait, name,
+  year — never the quote) via `tomorrowClip()` in `game.ts`.
+
 Working through five feature requests in discrete, independently-committed stages
 (see git log for what's landed). This file tracks what's left so work can resume
 on another machine.

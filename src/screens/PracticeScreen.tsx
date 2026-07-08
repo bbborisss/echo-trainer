@@ -43,7 +43,7 @@ export function PracticeScreen({ clips, dailyId, onPick, onBack }: Props) {
                   <img
                     src={clip.image}
                     alt={`Portrait of ${clip.speaker}`}
-                    className="h-32 w-full object-cover object-top transition group-hover:scale-[1.03]"
+                    className="h-32 w-full object-cover object-[50%_20%] transition group-hover:scale-[1.03]"
                   />
                   {best > 0 && (
                     <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-bold text-amber-400">

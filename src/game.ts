@@ -123,3 +123,8 @@ export function dayNumber(): number {
 export function dailyClip<T>(clips: T[]): T {
   return clips[(dayNumber() - 1) % clips.length]
 }
+
+/** Tomorrow's daily clip — teased on the intro screen (speaker only, no quote). */
+export function tomorrowClip<T>(clips: T[]): T {
+  return clips[dayNumber() % clips.length]
+}

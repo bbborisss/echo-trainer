@@ -1,4 +1,5 @@
-import { dayNumber, streak, triesLeft, bestToday, MAX_TRIES } from '../game'
+import { dayNumber, streak, tomorrowClip, triesLeft, bestToday, MAX_TRIES } from '../game'
+import { CLIPS } from '../clips'
 import type { Clip } from '../types'
 
 interface Props {
@@ -12,6 +13,7 @@ export function IntroScreen({ daily, onPlayDaily, onPractice }: Props) {
   const tries = triesLeft(daily.id)
   const played = MAX_TRIES - tries
   const done = tries === 0
+  const tomorrow = tomorrowClip(CLIPS)
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-8 px-6 py-10">
@@ -61,6 +63,24 @@ export function IntroScreen({ daily, onPlayDaily, onPractice }: Props) {
             The full speech library. Unlimited takes — warm up or chase a best.
           </p>
         </button>
+
+        {/* Tomorrow teaser: the speaker, never the line */}
+        <div className="flex items-center gap-3 rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/50 p-4">
+          <img
+            src={tomorrow.image}
+            alt={`Portrait of ${tomorrow.speaker}`}
+            className="h-12 w-12 shrink-0 rounded-full border border-zinc-700 object-cover object-[50%_20%]"
+          />
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Tomorrow’s voice · #{dayNumber() + 1}
+            </div>
+            <div className="truncate text-sm font-bold text-zinc-200">
+              {tomorrow.speaker} <span className="font-normal text-zinc-500">({tomorrow.year})</span>
+            </div>
+            <div className="text-xs text-zinc-500">What will you have to say? 🔥</div>
+          </div>
+        </div>
       </div>
 
       <p className="text-xs text-zinc-600">Pro tip: wear headphones so your mic only hears you.</p>

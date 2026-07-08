@@ -7,7 +7,8 @@ export interface RecordingResult {
   url: string
 }
 
-const MAX_RECORDING_MS = 30_000
+// Generous ceiling: the longest reference clip is ~31s and players run long.
+const MAX_RECORDING_MS = 45_000
 
 export function useRecorder(onComplete: (result: RecordingResult) => void) {
   const [status, setStatus] = useState<RecorderStatus>('idle')
