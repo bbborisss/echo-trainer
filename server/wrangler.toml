@@ -17,3 +17,21 @@ ASR_MODEL = "whisper-large-v3-turbo"
 
 # Comma-separated list of allowed browser origins, or "*" while developing.
 ALLOWED_ORIGINS = "http://localhost:5173"
+
+# Used in the daily teaser email.
+SITE_URL = "http://localhost:5173"
+API_URL = "http://localhost:8787"
+EMAIL_FROM = "Echo Chamber <onboarding@resend.dev>"
+
+# Game-state database. Before first deploy:
+#   npx wrangler d1 create echo-chamber-db     -> paste database_id below
+#   npx wrangler d1 execute echo-chamber-db --file=schema.sql
+# (wrangler dev uses a local SQLite regardless of database_id)
+[[d1_databases]]
+binding = "DB"
+database_name = "echo-chamber-db"
+database_id = "REPLACE-AFTER-wrangler-d1-create"
+
+# Daily teaser email, 13:00 UTC (~9am US East). Requires RESEND_API_KEY secret.
+[triggers]
+crons = ["0 13 * * *"]

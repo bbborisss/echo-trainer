@@ -1,0 +1,12 @@
+# Copy to server/.dev.vars for `wrangler dev` (gitignored — real keys go here).
+# Mock upstreams (node ../scripts/mock_backend.mjs with PORT=8788):
+COACH_API_KEY = "mock"
+COACH_BASE_URL = "http://localhost:8788"
+ASR_API_KEY = "mock"
+ASR_BASE_URL = "http://localhost:8788"
+# For a real coaching-quality test, replace with e.g.:
+# COACH_API_KEY = "sk-..."            # DeepSeek key
+# COACH_BASE_URL = "https://api.deepseek.com"
+# ASR_API_KEY = "gsk_..."             # Groq key
+# ASR_BASE_URL = "https://api.groq.com/openai/v1"
+# RESEND_API_KEY = "re_..."           # enables the daily teaser email cron

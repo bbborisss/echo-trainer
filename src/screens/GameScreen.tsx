@@ -7,7 +7,17 @@ import { useRecorder, type RecordingResult } from '../audio/recorder'
 import { startTranscription, type TranscriptSession } from '../audio/speech'
 import { computePeaks, type GhostWave } from '../audio/waveform'
 import { backendConfigured, fetchCoachNote, transcribeOnServer } from '../api'
-import { MAX_TRIES, bestToday, coachedTriesLeft, dayNumber, recordAttempt, triesLeft } from '../game'
+import {
+  MAX_TRIES,
+  bestToday,
+  coachedTriesLeft,
+  dayNumber,
+  heardToday,
+  markHeard,
+  recordAttempt,
+  todayKey,
+  triesLeft,
+} from '../game'
 import { AudioBubble } from '../components/AudioBubble'
 import { RecordButton } from '../components/RecordButton'
 import { ScoreCard } from '../components/ScoreCard'
@@ -49,7 +59,9 @@ function reaction(score: number, canRetry: boolean): string {
 /** One speech, played and scored. The single screen where the game happens. */
 export function GameScreen({ clip, mode, onExit, onPractice }: Props) {
   const [phase, setPhase] = useState<Phase>('listen')
-  const [clipHeard, setClipHeard] = useState(false)
+  // Once heard today, the mic stays unlocked — even after leaving this screen
+  // (or the site) and coming back. Persisted in game state + synced to server.
+  const [clipHeard, setClipHeard] = useState(() => heardToday(clip.id))
   const [refWave, setRefWave] = useState<GhostWave | null>(null)
   const [result, setResult] = useState<AttemptResult | null>(null)
   const [analyzeError, setAnalyzeError] = useState<string | null>(null)
@@ -103,7 +115,7 @@ export function GameScreen({ clip, mode, onExit, onPractice }: Props) {
 
         if (coachable && backendConfigured) {
           setLlmNote(null) // loading
-          void fetchCoachNote(clip, report, attempts).then((note) =>
+          void fetchCoachNote(clip, report, attempts, todayKey()).then((note) =>
             // Ignore if the player already started another take
             setLlmNote((cur) => (cur === null ? (note ?? undefined) : cur)),
           )
@@ -190,7 +202,10 @@ export function GameScreen({ clip, mode, onExit, onPractice }: Props) {
               src={clip.audio}
               peaks={refWave?.peaks ?? null}
               label="Original"
-              onEnded={() => setClipHeard(true)}
+              onEnded={() => {
+                setClipHeard(true)
+                markHeard(clip.id)
+              }}
             />
           </div>
 

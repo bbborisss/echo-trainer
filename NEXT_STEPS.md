@@ -1,5 +1,34 @@
 # Roadmap / handoff notes
 
+## Done — Stage 3: stateful backend + retention loop (2026-07-08)
+
+Worker grew from a thin proxy into a real backend (D1 + cookies + cron); see
+`server/README.md` for endpoints, local-dev recipe (no Cloudflare account
+needed — wrangler dev + `scripts/mock_backend.mjs` as LLM/ASR upstreams on
+port 8788), and deploy steps.
+
+- **Anonymous identity**: httpOnly `uid` cookie minted on `GET /me`; game
+  state (attempts/day, best-ever, streak, heard-clips) lives in D1, keyed by
+  uid + the client's LOCAL day string (server never guesses timezones).
+- **Client hybrid state**: localStorage stays authoritative offline;
+  `mergeServerState()` on boot (max/union merge), every mutation fire-and-
+  forgets to the server. Verified: attempts + heard state survive a full
+  localStorage wipe, restored via cookie.
+- **Mic-gate bug fixed**: "heard clip X today" now persists in game state
+  (`markHeard`/`heardToday`) + syncs to `/heard` — the mic stays unlocked when
+  leaving/returning to the game screen, reloading, or switching devices.
+- **Coach allowance enforced server-side** (3/clip/day, checked against the
+  attempts table; 429 past the cap).
+- **Email retention loop**: opt-in card on intro (`POST /subscribe`), daily
+  cron (13:00 UTC) sends the tomorrow-teaser email via Resend when
+  RESEND_API_KEY is set (silently skips otherwise), one-click `GET
+  /unsubscribe?token=`. OG meta tags added for link unfurls.
+- **Still needed to go live**: `wrangler login` + `d1 create` (paste id into
+  wrangler.toml) + secrets (DeepSeek/Groq/Resend) + `wrangler deploy`, then a
+  real-provider coaching-quality pass (prompt tuning in `COACH_SYSTEM`).
+  Later hardening: rate-limit /coach & /transcribe per uid, email
+  double-opt-in/verification, backfill offline plays to the server on boot.
+
 ## Done — Stage 1f: library expansion + tomorrow teaser (2026-07-08)
 
 - **Four new clips** (see provenance in `src/clips.ts`): Eleanor Roosevelt

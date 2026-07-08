@@ -27,3 +27,7 @@ raw_audio/
 tools/
 scripts/__pycache__/
 scripts/*.png
+
+server/.dev.vars
+server/.wrangler/
+.wrangler/

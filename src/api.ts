@@ -16,6 +16,7 @@ async function post(path: string, init: RequestInit, timeoutMs: number): Promise
     const res = await fetch(`${API_BASE}${path}`, {
       ...init,
       method: 'POST',
+      credentials: 'include', // uid cookie
       signal: AbortSignal.timeout(timeoutMs),
     })
     return res.ok ? res : null
@@ -24,11 +25,64 @@ async function post(path: string, init: RequestInit, timeoutMs: number): Promise
   }
 }
 
+// ---- server-side game state --------------------------------------------------
+
+/** Shape of GET /me — the server's view of this player. */
+export interface ServerState {
+  uid: string
+  streak: number
+  lastStreakDay: string | null
+  today: Record<string, { attempts: number; best: number }>
+  bestEver: Record<string, number>
+  heard: string[]
+  subscribed: boolean
+}
+
+/** Bootstrap identity + state. Sets the uid cookie on first call. */
+export async function fetchMe(day: string): Promise<ServerState | null> {
+  if (!API_BASE) return null
+  try {
+    const res = await fetch(`${API_BASE}/me?day=${day}`, {
+      credentials: 'include',
+      signal: AbortSignal.timeout(6_000),
+    })
+    return res.ok ? ((await res.json()) as ServerState) : null
+  } catch {
+    return null
+  }
+}
+
+const jsonPost = (path: string, body: unknown) =>
+  post(path, { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 6_000)
+
+/** Fire-and-forget: the player finished listening to a reference clip today. */
+export function reportHeard(day: string, clipId: string): void {
+  void jsonPost('/heard', { day, clipId })
+}
+
+/** Fire-and-forget: a scored attempt happened. */
+export function reportAttempt(
+  day: string,
+  prevDay: string,
+  clipId: string,
+  score: number,
+  daily: boolean,
+): void {
+  void jsonPost('/attempt', { day, prevDay, clipId, score, daily })
+}
+
+/** Daily-reminder opt-in. Resolves true when the server accepted the email. */
+export async function subscribeEmail(email: string): Promise<boolean> {
+  const res = await jsonPost('/subscribe', { email })
+  return res !== null
+}
+
 /** One-shot LLM coach note for a scored attempt, or null (use rule-based tips). */
 export async function fetchCoachNote(
   clip: Clip,
   report: ScoreReport,
   attempt: number,
+  day?: string,
 ): Promise<string | null> {
   const res = await post(
     '/coach',
@@ -36,7 +90,9 @@ export async function fetchCoachNote(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         attempt,
+        day, // lets the server enforce the coaching allowance per uid
         clip: {
+          id: clip.id,
           speaker: clip.speaker,
           title: clip.title,
           year: clip.year,

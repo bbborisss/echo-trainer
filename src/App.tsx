@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CLIPS } from './clips'
 import type { Clip } from './types'
-import { dailyClip } from './game'
+import { fetchMe } from './api'
+import { dailyClip, mergeServerState, todayKey } from './game'
 import { IntroScreen } from './screens/IntroScreen'
 import { PracticeScreen } from './screens/PracticeScreen'
 import { GameScreen } from './screens/GameScreen'
@@ -13,7 +14,20 @@ type Screen =
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'intro' })
+  const [subscribed, setSubscribed] = useState(false)
+  const [, setSynced] = useState(0) // re-render once server state is merged
   const daily = dailyClip(CLIPS)
+
+  // Boot: pull the server's view of this player (identity cookie, streak,
+  // attempts, heard clips) and merge it into local state. Offline: no-op.
+  useEffect(() => {
+    void fetchMe(todayKey()).then((state) => {
+      if (!state) return
+      mergeServerState(state)
+      setSubscribed(state.subscribed)
+      setSynced((n) => n + 1)
+    })
+  }, [])
 
   const goHome = useCallback(() => setScreen({ name: 'intro' }), [])
   const goPractice = useCallback(() => setScreen({ name: 'practice-picker' }), [])
@@ -23,6 +37,8 @@ export default function App() {
       return (
         <IntroScreen
           daily={daily}
+          subscribed={subscribed}
+          onSubscribed={() => setSubscribed(true)}
           onPlayDaily={() => setScreen({ name: 'game', clip: daily, mode: 'daily' })}
           onPractice={goPractice}
         />

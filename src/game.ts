@@ -1,3 +1,5 @@
+import { reportAttempt, reportHeard, type ServerState } from './api'
+
 /** Takes allowed on the daily clip. Practice clips are unlimited. */
 export const MAX_TRIES = 3
 /** LLM coach notes allowed per clip per day; past this the rule-based coach answers. */
@@ -6,6 +8,8 @@ export const MAX_COACHED_TRIES = 3
 interface ClipDay {
   attempts: number
   best: number
+  /** reference clip listened to completion today (unlocks the mic) */
+  heard?: boolean
 }
 
 interface SavedState {
@@ -17,7 +21,7 @@ interface SavedState {
 
 const KEY = 'echo-trainer-v1'
 
-function todayKey(): string {
+export function todayKey(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -102,7 +106,58 @@ export function recordAttempt(
   }
 
   save(s)
+  reportAttempt(today, yesterdayKey(), clipId, score, opts.daily) // best-effort server sync
   return { attempts: rec.attempts, newBest }
+}
+
+/** The reference clip was listened to completion today — unlocks the mic, and
+ *  stays unlocked when the player leaves the screen and comes back. */
+export function markHeard(clipId: string): void {
+  const s = load()
+  const today = todayKey()
+  s.days[today] ??= {}
+  s.days[today][clipId] ??= { attempts: 0, best: 0 }
+  s.days[today][clipId].heard = true
+  save(s)
+  reportHeard(today, clipId) // best-effort server sync
+}
+
+export function heardToday(clipId: string): boolean {
+  return load().days[todayKey()]?.[clipId]?.heard === true
+}
+
+/**
+ * Merge the server's view of this player into local state (server wins on
+ * identity-level facts like streak recency; counters merge by max/union so
+ * offline plays aren't erased locally). Called once on boot when the backend
+ * is configured.
+ */
+export function mergeServerState(server: ServerState): void {
+  const s = load()
+  const today = todayKey()
+
+  // Streak: prefer whichever record is more recent; on a tie take the larger.
+  const localDate = s.lastStreakDate ?? ''
+  const serverDate = server.lastStreakDay ?? ''
+  if (serverDate > localDate || (serverDate === localDate && server.streak > s.streakCount)) {
+    s.streakCount = server.streak
+    s.lastStreakDate = server.lastStreakDay
+  }
+
+  s.days[today] ??= {}
+  for (const [clipId, rec] of Object.entries(server.today)) {
+    const local = (s.days[today][clipId] ??= { attempts: 0, best: 0 })
+    local.attempts = Math.max(local.attempts, rec.attempts)
+    local.best = Math.max(local.best, rec.best)
+  }
+  for (const clipId of server.heard) {
+    const local = (s.days[today][clipId] ??= { attempts: 0, best: 0 })
+    local.heard = true
+  }
+  for (const [clipId, best] of Object.entries(server.bestEver)) {
+    s.bestEver[clipId] = Math.max(s.bestEver[clipId] ?? 0, best)
+  }
+  save(s)
 }
 
 // ---- Speech of the Day -----------------------------------------------------

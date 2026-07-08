@@ -1,15 +1,64 @@
+import { useState } from 'react'
 import { dayNumber, streak, tomorrowClip, triesLeft, bestToday, MAX_TRIES } from '../game'
+import { backendConfigured, subscribeEmail } from '../api'
 import { CLIPS } from '../clips'
 import type { Clip } from '../types'
 
 interface Props {
   daily: Clip
+  subscribed: boolean
+  onSubscribed: () => void
   onPlayDaily: () => void
   onPractice: () => void
 }
 
+/** Daily-reminder opt-in: tomorrow's speaker in your inbox. */
+function RemindMe({ onSubscribed }: { onSubscribed: () => void }) {
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    setError(false)
+    const ok = await subscribeEmail(email.trim())
+    setBusy(false)
+    if (ok) onSubscribed()
+    else setError(true)
+  }
+
+  return (
+    <form onSubmit={submit} className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+        Never miss a voice
+      </div>
+      <div className="mt-2 flex gap-2">
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+          className="min-w-0 flex-1 rounded-full border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-orange-500/60"
+        />
+        <button
+          type="submit"
+          disabled={busy}
+          className="shrink-0 rounded-full bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-500 active:scale-95 disabled:opacity-50"
+        >
+          {busy ? '…' : 'Remind me'}
+        </button>
+      </div>
+      <p className="mt-1.5 text-xs text-zinc-600">
+        {error ? 'That didn’t work — try again?' : 'One email a day: the speaker, never the line.'}
+      </p>
+    </form>
+  )
+}
+
 /** Landing screen: the two doors — today's shared speech, or the practice gym. */
-export function IntroScreen({ daily, onPlayDaily, onPractice }: Props) {
+export function IntroScreen({ daily, subscribed, onSubscribed, onPlayDaily, onPractice }: Props) {
   const tries = triesLeft(daily.id)
   const played = MAX_TRIES - tries
   const done = tries === 0
@@ -81,6 +130,11 @@ export function IntroScreen({ daily, onPlayDaily, onPractice }: Props) {
             <div className="text-xs text-zinc-500">What will you have to say? 🔥</div>
           </div>
         </div>
+
+        {backendConfigured && !subscribed && <RemindMe onSubscribed={onSubscribed} />}
+        {backendConfigured && subscribed && (
+          <p className="text-center text-xs text-zinc-600">📬 Daily reminder on — see you tomorrow.</p>
+        )}
       </div>
 
       <p className="text-xs text-zinc-600">Pro tip: wear headphones so your mic only hears you.</p>
