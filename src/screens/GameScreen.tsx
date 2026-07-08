@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Clip, ScoreReport } from '../types'
 import { decodeToMono, extractFeatures, trimSilence } from '../audio/dsp'
+import { useHeadphones } from '../audio/headphones'
 import { getRefData } from '../audio/refdata'
 import { scoreAttempt } from '../audio/score'
 import { useRecorder, type RecordingResult } from '../audio/recorder'
@@ -24,6 +25,19 @@ import { ScoreCard } from '../components/ScoreCard'
 import { ScrollingWave } from '../components/ScrollingWave'
 
 type Phase = 'listen' | 'analyzing' | 'results'
+
+/**
+ * Two ways to perform:
+ *  - echo:   listen first, then perform from memory (the original mode)
+ *  - shadow: the reference plays in your headphones WHILE you speak along —
+ *            the interpreter's "shadowing" drill. Headphones required, or the
+ *            mic would record the original along with you.
+ */
+type PlayMode = 'echo' | 'shadow'
+
+const MODE_KEY = 'echo-chamber-mode'
+/** Shadowers trail the voice slightly — keep recording a beat after the clip ends. */
+const SHADOW_TAIL_MS = 1500
 
 interface Props {
   clip: Clip
@@ -69,6 +83,30 @@ export function GameScreen({ clip, mode, onExit, onPractice }: Props) {
   const [llmNote, setLlmNote] = useState<string | null | undefined>(undefined)
   const transcriptRef = useRef<TranscriptSession | null>(null)
 
+  // --- play mode (echo vs shadow) ---
+  const { connected: headphones, verify: verifyHeadphones } = useHeadphones()
+  const [playMode, setPlayMode] = useState<PlayMode>('echo')
+  const [modeHint, setModeHint] = useState<string | null>(null)
+  const playModeRef = useRef(playMode)
+  playModeRef.current = playMode
+  const shadowAudioRef = useRef<HTMLAudioElement | null>(null)
+  const shadowStopTimer = useRef<number | null>(null)
+
+  // Restore a saved shadow preference once headphones are (passively) confirmed.
+  useEffect(() => {
+    if (headphones && localStorage.getItem(MODE_KEY) === 'shadow') setPlayMode('shadow')
+  }, [headphones])
+
+  const stopShadowAudio = useCallback(() => {
+    shadowAudioRef.current?.pause()
+    shadowAudioRef.current = null
+    if (shadowStopTimer.current !== null) {
+      window.clearTimeout(shadowStopTimer.current)
+      shadowStopTimer.current = null
+    }
+  }, [])
+  useEffect(() => stopShadowAudio, [stopShadowAudio])
+
   const daily = mode === 'daily'
   const remaining = daily ? triesLeft(clip.id) : Infinity
   const canRetry = daily ? remaining > 0 : true
@@ -82,6 +120,7 @@ export function GameScreen({ clip, mode, onExit, onPractice }: Props) {
 
   const handleRecordingComplete = useCallback(
     async (rec: RecordingResult) => {
+      stopShadowAudio() // covers the max-length auto-stop while the ref still plays
       setPhase('analyzing')
       setAnalyzeError(null)
       const browserTranscriptPromise =
@@ -125,15 +164,64 @@ export function GameScreen({ clip, mode, onExit, onPractice }: Props) {
         setPhase('listen')
       }
     },
-    [clip, daily],
+    [clip, daily, stopShadowAudio],
   )
 
   const recorder = useRecorder(handleRecordingComplete)
 
   const startRecording = useCallback(() => {
     transcriptRef.current = startTranscription()
-    void recorder.start()
-  }, [recorder])
+    void recorder.start().then((ok) => {
+      if (!ok || playModeRef.current !== 'shadow') return
+      // Shadow: the reference rolls in the player's headphones while the mic
+      // records. Auto-stop shortly after the clip ends (shadowers trail it).
+      const audio = new Audio(clip.audio)
+      shadowAudioRef.current = audio
+      audio.onended = () => {
+        shadowStopTimer.current = window.setTimeout(() => recorder.stop(), SHADOW_TAIL_MS)
+      }
+      audio.play().catch(() => {
+        // Playback refused (rare — we're inside a user gesture): fall back to echo.
+        stopShadowAudio()
+        setModeHint('Couldn’t start the reference audio — recording in Echo mode.')
+      })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorder.start, recorder.stop, clip.audio, stopShadowAudio])
+
+  const stopRecording = useCallback(() => {
+    stopShadowAudio()
+    recorder.stop()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorder.stop, stopShadowAudio])
+
+  const switchMode = useCallback(
+    async (next: PlayMode) => {
+      setModeHint(null)
+      if (next === playModeRef.current) return
+      if (next === 'shadow') {
+        // Gate on headphones: re-verify on tap (may prompt for the mic once,
+        // which unlocks device labels for detection).
+        const ok = headphones || (await verifyHeadphones())
+        if (!ok) {
+          setModeHint('🎧 Shadow needs headphones — connect them and tap again.')
+          return
+        }
+      }
+      setPlayMode(next)
+      localStorage.setItem(MODE_KEY, next)
+    },
+    [headphones, verifyHeadphones],
+  )
+
+  // If the headphones disappear, drop back to Echo (never mid-recording —
+  // the take finishes; audio just routes to whatever output remains).
+  useEffect(() => {
+    if (!headphones && playMode === 'shadow' && recorder.status !== 'recording') {
+      setPlayMode('echo')
+      setModeHint('Headphones disconnected — back to Echo mode.')
+    }
+  }, [headphones, playMode, recorder.status])
 
   const retry = useCallback(() => {
     setResult(null)
@@ -244,18 +332,58 @@ export function GameScreen({ clip, mode, onExit, onPractice }: Props) {
               <div className="w-full">
                 <div className="flex items-center justify-between px-5 text-[10px] font-semibold uppercase tracking-wide">
                   <span className="text-orange-400">You</span>
-                  <span className="text-zinc-500">Chase the shadow — light up every ◆</span>
+                  <span className="text-zinc-500">
+                    {playMode === 'shadow'
+                      ? '🎧 Speak along — the voice is in your ears'
+                      : 'Chase the shadow — light up every ◆'}
+                  </span>
                 </div>
                 {/* Full-bleed: the wave runs off both edges of the screen */}
                 <ScrollingWave analyser={recorder.analyser} ghost={refWave} />
               </div>
             )}
+
+            {/* Mode toggle: Echo (listen, then perform) vs Shadow (speak along) */}
+            {!recording && (
+              <div className="flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900 p-1">
+                {(
+                  [
+                    ['echo', '🔁 Echo'],
+                    ['shadow', '🎧 Shadow'],
+                  ] as const
+                ).map(([m, label]) => (
+                  <button
+                    key={m}
+                    onClick={() => void switchMode(m)}
+                    aria-pressed={playMode === m}
+                    className={`rounded-full px-4 py-1.5 text-xs font-semibold transition active:scale-95 ${
+                      playMode === m
+                        ? 'bg-orange-600 text-white'
+                        : m === 'shadow' && !headphones
+                          ? 'text-zinc-600 hover:text-zinc-400'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {!recording && (
+              <p className="text-xs text-zinc-600">
+                {playMode === 'shadow'
+                  ? 'The original plays in your headphones while you speak with it — interpreter style.'
+                  : 'Listen first, then perform from memory.'}
+              </p>
+            )}
+            {modeHint && <p className="text-xs text-amber-400">{modeHint}</p>}
+
             <RecordButton
               recording={recording}
               disabled={!clipHeard || recorder.status === 'requesting'}
               elapsed={recorder.elapsed}
               onStart={startRecording}
-              onStop={recorder.stop}
+              onStop={stopRecording}
             />
             {!clipHeard && (
               <p className="text-xs text-zinc-500">Play the clip all the way through to unlock the mic</p>

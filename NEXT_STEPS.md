@@ -1,5 +1,26 @@
 # Roadmap / handoff notes
 
+## Done — Stage 4: Shadow mode (2026-07-08)
+
+Second play mode alongside the original ("Echo" = listen, then perform):
+**Shadow** plays the reference in the player's headphones WHILE they speak
+along — the interpreter's shadowing drill.
+
+- Toggle on the game screen (persisted in localStorage `echo-chamber-mode`),
+  gated on headphones: without them the mic would record the original.
+- Detection (`src/audio/headphones.ts`): label heuristics over
+  `enumerateDevices()` + `devicechange`; tapping the toggle without labels
+  triggers one mic-permission request to unlock them (`verify()`). Disconnect
+  mid-mode reverts to Echo (never mid-recording).
+- Recording orchestration (GameScreen): recorder starts first, then the
+  reference `Audio` plays; auto-stop `SHADOW_TAIL_MS` (1.5s) after the clip
+  ends since shadowers trail the voice. Scoring pipeline unchanged — DTW
+  alignment absorbs the shadowing lag.
+- E2E: refuses without headphones (hint shown), full record→score with a
+  stubbed AirPods device, preference survives reload.
+- Later ideas: score shadow lag as its own dimension; shadow-specific coach
+  prompts (the LLM payload doesn't yet know the mode).
+
 ## Done — Stage 3: stateful backend + retention loop (2026-07-08)
 
 Worker grew from a thin proxy into a real backend (D1 + cookies + cron); see

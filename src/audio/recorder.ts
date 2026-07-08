@@ -36,7 +36,8 @@ export function useRecorder(onComplete: (result: RecordingResult) => void) {
 
   useEffect(() => cleanup, [cleanup])
 
-  const start = useCallback(async () => {
+  /** Returns true once recording is actually running (mic granted). */
+  const start = useCallback(async (): Promise<boolean> => {
     setError(null)
     setStatus('requesting')
     try {
@@ -80,10 +81,12 @@ export function useRecorder(onComplete: (result: RecordingResult) => void) {
           mediaRef.current?.stop()
         }
       }, 100)
+      return true
     } catch {
       cleanup()
       setStatus('error')
       setError('Microphone access denied. Allow the mic in your browser and try again.')
+      return false
     }
   }, [cleanup, onComplete])
 
